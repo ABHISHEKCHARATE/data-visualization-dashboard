@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Data Visualization Dashboard</title>
+
+        <!-- Bootstrap CSS -->
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+        <!-- Chart.js & Plotly.js -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                background-color: #f8f9fa;
+            }
+
+            .container {
+                max-width: 1200px;
+                margin: auto;
+                padding: 20px;
+            }
+
+            .chart-container {
+                display: flex;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            .chart-box {
+                width: 45%;
+                margin: 20px;
+                padding: 15px;
+                background: white;
+                border-radius: 10px;
+                box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            }
+
+            select,
+            button {
+                margin: 10px;
+            }
+
+        </style>
+    </head>
+
+    <body>
+
+        <div class="container">
+            <h1 class="text-center my-4">Data Visualization Dashboard</h1>
+
+            <!-- Filters Section -->
+            <div class="row">
+                <div class="col-md-4">
+                    <label for="country" class="form-label">Country:</label>
+                    <select id="country" class="form-select">
+                        <option value="">All</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label for="year" class="form-label">Year:</label>
+                    <select id="year" class="form-select">
+                        <option value="">All</option>
+                    </select>
+                </div>
+
+                <div class="col-md-4">
+                    <label for="topic" class="form-label">Topic:</label>
+                    <select id="topic" class="form-select">
+                        <option value="">All</option>
+                    </select>
+                </div>
+            </div>
+
+            <button class="btn btn-primary my-3" onclick="fetchData()">Apply Filters</button>
+
+            <div class="chart-container">
+                <div class="chart-box">
+                    <canvas id="barChart"></canvas>
+                </div>
+                <div class="chart-box">
+                    <div id="pieChart" class="plotly-chart"></div>
+                </div>
+                <div class="chart-box">
+                    <canvas id="lineChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            async function fetchData() {
+                const country = document.getElementById("country").value;
+                const year = document.getElementById("year").value;
+                const topic = document.getElementById("topic").value;
+                let url = "/api/data/";
+
+                if (country || year || topic) {
+                    url += "?";
+                    if (country) url += `country=${country}&`;
+                    if (year) url += `end_year=${year}&`;
+                    if (topic) url += `topic=${topic}`;
+                }
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.length === 0) {
+                    console.warn("No data found for the selected filters.");
+                    return;
+                }
+
+                const labels = data.map(d => d.topic || "Unknown");
+                const intensity = data.map(d => d.intensity || 0);
+                const likelihood = data.map(d => d.likelihood || 0);
+                const relevance = data.map(d => d.relevance || 0);
+
+                updateBarChart(labels, intensity);
+                updatePieChart(labels, likelihood);
+                updateLineChart(labels, relevance);
+            }
+
+            function updateBarChart(labels, values) {
+                const ctx = document.getElementById('barChart').getContext('2d');
+
+                if (window.barChart instanceof Chart) {
+                    window.barChart.destroy();
+                }
+
+                window.barChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Intensity',
+                            data: values,
+                            backgroundColor: 'rgba(54, 162, 235, 0.5)',
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+            }
+
+            function updatePieChart(labels, values) {
+                const data = [{
+                    values: values,
+                    labels: labels,
+                    type: 'pie'
+                }];
+                Plotly.newPlot('pieChart', data);
+            }
+
+            function updateLineChart(labels, values) {
+                const ctx = document.getElementById('lineChart').getContext('2d');
+
+                if (window.lineChart instanceof Chart) {
+                    window.lineChart.destroy();
+                }
+
+                window.lineChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Relevance',
+                            data: values,
+                            borderColor: 'rgba(255, 99, 132, 1)',
+                            borderWidth: 2,
+                            fill: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+            }
+
+            async function loadFilters() {
+                try {
+                    const response = await fetch("/api/data/");
+                    if (!response.ok) throw new Error("Failed to fetch data");
+
+                    const data = await response.json();
+                    console.log("API Data:", data);
+
+                    if (data.length === 0) {
+                        console.warn("No data available for filters.");
+                        return;
+                    }
+
+                    const countries = [...new Set(data.map(d => d.country).filter(c => c && c !== "null"))];
+                    const years = [...new Set(data.map(d => d.end_year).filter(y => y && y !== ""))];
+                    const topics = [...new Set(data.map(d => d.topic).filter(t => t && t !== "null"))];
+
+                    populateSelect("country", countries);
+                    populateSelect("year", years);
+                    populateSelect("topic", topics);
+                } catch (error) {
+                    console.error("Error loading filters:", error);
+                }
+            }
+
+            function populateSelect(id, items) {
+                const select = document.getElementById(id);
+                select.innerHTML = '<option value="">All</option>';
+                items.forEach(item => {
+                    const option = document.createElement("option");
+                    option.value = item;
+                    option.textContent = item;
+                    select.appendChild(option);
+                });
+            }
+
+            document.addEventListener("DOMContentLoaded", () => {
+                fetchData();
+                loadFilters();
+            });
+        </script>
+
+    </body>
+
+</html>
